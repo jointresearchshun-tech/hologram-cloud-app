@@ -1,6 +1,3 @@
-# 完全クラウド型ホログラム処理システム
-# Streamlit Community Cloud + Google Colab + GitHub Storage
-
 import streamlit as st
 import requests
 import json
@@ -14,7 +11,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# ===== GitHub Storage 連携 =====
+# ===== GitHub Storage クラス =====
 class GitHubStorage:
     def __init__(self, token, repo):
         self.token = token
@@ -33,7 +30,6 @@ class GitHubStorage:
             return False
     
     def list_files(self, folder="data", extensions=None):
-        """指定フォルダのファイル一覧を取得"""
         try:
             url = f"https://api.github.com/repos/{self.repo}/contents/{folder}"
             response = requests.get(url, headers=self.headers, timeout=10)
@@ -49,16 +45,12 @@ class GitHubStorage:
             return []
     
     def upload_file(self, content, filename, folder="results", message=None):
-        """結果ファイルをGitHubにアップロード"""
         try:
             url = f"https://api.github.com/repos/{self.repo}/contents/{folder}/{filename}"
             existing = requests.get(url, headers=self.headers)
             sha = existing.json().get('sha') if existing.status_code == 200 else None
 
-            if isinstance(content, bytes):
-                content_b64 = base64.b64encode(content).decode('utf-8')
-            else:
-                content_b64 = base64.b64encode(content.encode('utf-8')).decode('utf-8')
+            content_b64 = base64.b64encode(content).decode('utf-8')
             
             data = {
                 "message": message or f"Upload {filename}",
@@ -73,7 +65,7 @@ class GitHubStorage:
             st.error(f"アップロードエラー: {e}")
             return False
 
-# ===== Google Colab サーバー連携 =====
+# ===== Google Colab サーバー クライアント =====
 class ColabServerClient:
     def __init__(self):
         self.servers = []
@@ -103,7 +95,7 @@ class ColabServerClient:
                 "job_id": f"job_{int(time.time())}",
                 "github_repo": github_config['repo'],
                 "github_token": github_config['token'],
-                "input_file": input_file,   # ファイル名 + ダウンロードURL
+                "input_file": input_file,   
                 "processing_config": processing_config,
                 "timestamp": datetime.now().isoformat()
             }
@@ -127,48 +119,48 @@ class ColabServerClient:
         return {"status": "error", "message": "状態取得失敗"}
 
 # ===== セッション初期化 =====
-if "github_storage" not in st.session_state:
-    # secrets から自動読込
-    try:
-        st.session_state.github_storage = GitHubStorage(
-            st.secrets["github"]["token"],
-            st.secrets["github"]["default_repo"]
-        )
-    except Exception:
-        st.session_state.github_storage = None
-if "colab_client" not in st.session_state:
-    st.session_state.colab_client = ColabServerClient()
-if "current_job" not in st.session_state:
-    st.session_state.current_job = None
+def initialize_session_state():
+    if "github_storage" not in st.session_state:
+        try:
+            st.session_state.github_storage = GitHubStorage(
+                st.secrets["github"]["token"],
+                st.secrets["github"]["default_repo"]
+            )
+        except Exception:
+            st.session_state.github_storage = None
+    if "colab_client" not in st.session_state:
+        st.session_state.colab_client = ColabServerClient()
+    if "current_job" not in st.session_state:
+        st.session_state.current_job = None
 
 # ===== メイン UI =====
-st.title("☁️ 完全クラウド型ホログラム処理システム")
-st.markdown("**あなたのPC性能は一切使用しません - すべてクラウドで処理**")
+def main():
+    st.title("☁️ 完全クラウド型ホログラム処理システム")
+    st.markdown("**あなたのPC性能は一切使用しません - すべてクラウドで処理**")
 
-# GitHub接続設定
-if st.session_state.github_storage is None:
-    st.subheader("🔧 GitHub Storage 設定")
-    st.warning("Secrets に GitHub Token を設定してください")
-else:
-    st.success(f"✅ GitHub 接続成功: {st.session_state.github_storage.repo}")
+    # GitHub接続設定
+    if st.session_state.github_storage is None:
+        st.subheader("🔧 GitHub Storage 設定")
+        st.warning("Secrets に GitHub Token を設定してください")
+    else:
+        st.success(f"✅ GitHub 接続成功: {st.session_state.github_storage.repo}")
 
-# Colabサーバー設定
-if not st.session_state.colab_client.servers:
-    st.subheader("🖥️ Google Colab サーバー追加")
-    server_name = st.text_input("サーバー名:", value="Colab Server 1")
-    server_url = st.text_input("ngrok URL:", placeholder="https://abc123.ngrok.io")
-    if st.button("➕ サーバー追加"):
-        if st.session_state.colab_client.add_server(server_name, server_url):
-            st.success(f"✅ {server_name} を追加しました!")
-            st.rerun()
-        else:
-            st.error("❌ サーバーに接続できませんでした")
-# ===== ファイルアップロード =====
-st.subheader("📤 GitHub にファイルをアップロード")
+    # Colabサーバー設定
+    if not st.session_state.colab_client.servers:
+        st.subheader("🖥️ Google Colab サーバー追加")
+        server_name = st.text_input("サーバー名:", value="Colab Server 1")
+        server_url = st.text_input("ngrok URL:", placeholder="https://abc123.ngrok.io")
+        if st.button("➕ サーバー追加"):
+            if st.session_state.colab_client.add_server(server_name, server_url):
+                st.success(f"✅ {server_name} を追加しました!")
+                st.experimental_rerun()
+            else:
+                st.error("❌ サーバーに接続できませんでした")
 
-uploaded_file = st.file_uploader("ローカルファイルを選択", type=["pt", "pth", "zip", "png", "jpg"])
-if uploaded_file is not None:
-    if st.button("⬆️ アップロード実行"):
+    # ファイルアップロード
+    st.subheader("📤 GitHub にファイルをアップロード")
+    uploaded_file = st.file_uploader("ローカルファイルを選択", type=["pt", "pth", "zip", "png", "jpg"])
+    if uploaded_file is not None and st.button("⬆️ アップロード実行"):
         content = uploaded_file.read()
         success = st.session_state.github_storage.upload_file(
             content,
@@ -178,50 +170,51 @@ if uploaded_file is not None:
         )
         if success:
             st.success(f"✅ {uploaded_file.name} をアップロードしました！")
-            st.rerun()
+            st.experimental_rerun()
         else:
             st.error("❌ アップロード失敗")
-# ===== ファイルダウンロード =====
-st.subheader("📥 GitHub からダウンロード")
 
-download_files = st.session_state.github_storage.list_files("data")
-if download_files:
-    file_to_download = st.selectbox("ダウンロードするファイルを選択:", [f['name'] for f in download_files])
-    
-    if st.button("⬇️ ダウンロード実行"):
-        # GitHub からファイル取得
-        file_info = next(f for f in download_files if f['name'] == file_to_download)
-        response = requests.get(file_info["download_url"])
-        if response.status_code == 200:
-            b64 = base64.b64encode(response.content).decode()
-            href = f'<a href="data:application/octet-stream;base64,{b64}" download="{file_to_download}">📂 {file_to_download} をダウンロード</a>'
-            st.markdown(href, unsafe_allow_html=True)
-        else:
-            st.error("❌ ダウンロード失敗")
-
-# メイン処理UI
-if st.session_state.github_storage and st.session_state.colab_client.servers:
-    st.subheader("🔬 クラウド処理実行")
-    
-    input_files = st.session_state.github_storage.list_files("data", [".pt", ".pth", ".zip"])
-    if input_files:
-        selected = st.selectbox("処理対象ファイル:", [f['name'] for f in input_files])
-        file_info = next(f for f in input_files if f["name"] == selected)
-
-        if st.button("🚀 クラウド処理開始"):
-            processing_config = {"type": "hologram_processing"}
-            github_config = {
-                "repo": st.session_state.github_storage.repo,
-                "token": st.session_state.github_storage.token
-            }
-            job_id, error = st.session_state.colab_client.submit_job(github_config, file_info, processing_config)
-            if job_id:
-                st.session_state.current_job = job_id
-                st.success(f"✅ 処理開始: {job_id}")
+    # ファイルダウンロード
+    st.subheader("📥 GitHub からダウンロード")
+    download_files = st.session_state.github_storage.list_files("data")
+    if download_files:
+        file_to_download = st.selectbox("ダウンロードするファイルを選択:", [f['name'] for f in download_files])
+        if st.button("⬇️ ダウンロード実行"):
+            file_info = next(f for f in download_files if f['name'] == file_to_download)
+            response = requests.get(file_info["download_url"])
+            if response.status_code == 200:
+                b64 = base64.b64encode(response.content).decode()
+                href = f'<a href="data:application/octet-stream;base64,{b64}" download="{file_to_download}">📂 {file_to_download} をダウンロード</a>'
+                st.markdown(href, unsafe_allow_html=True)
             else:
-                st.error(error)
-    
-    if st.session_state.current_job:
-        st.info(f"ジョブ監視中: {st.session_state.current_job}")
-        job_status = st.session_state.colab_client.get_job_status(st.session_state.current_job)
-        st.json(job_status)
+                st.error("❌ ダウンロード失敗")
+
+    # メイン処理UI
+    if st.session_state.github_storage and st.session_state.colab_client.servers:
+        st.subheader("🔬 クラウド処理実行")
+        input_files = st.session_state.github_storage.list_files("data", [".pt", ".pth", ".zip"])
+        if input_files:
+            selected = st.selectbox("処理対象ファイル:", [f['name'] for f in input_files])
+            file_info = next(f for f in input_files if f["name"] == selected)
+
+            if st.button("🚀 クラウド処理開始"):
+                processing_config = {"type": "hologram_processing"}
+                github_config = {
+                    "repo": st.session_state.github_storage.repo,
+                    "token": st.session_state.github_storage.token
+                }
+                job_id, error = st.session_state.colab_client.submit_job(github_config, file_info, processing_config)
+                if job_id:
+                    st.session_state.current_job = job_id
+                    st.success(f"✅ 処理開始: {job_id}")
+                else:
+                    st.error(error)
+
+        if st.session_state.current_job:
+            st.info(f"ジョブ監視中: {st.session_state.current_job}")
+            job_status = st.session_state.colab_client.get_job_status(st.session_state.current_job)
+            st.json(job_status)
+
+if __name__ == "__main__":
+    initialize_session_state()
+    main()
