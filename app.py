@@ -163,6 +163,41 @@ if not st.session_state.colab_client.servers:
             st.rerun()
         else:
             st.error("❌ サーバーに接続できませんでした")
+# ===== ファイルアップロード =====
+st.subheader("📤 GitHub にファイルをアップロード")
+
+uploaded_file = st.file_uploader("ローカルファイルを選択", type=["pt", "pth", "zip", "png", "jpg"])
+if uploaded_file is not None:
+    if st.button("⬆️ アップロード実行"):
+        content = uploaded_file.read()
+        success = st.session_state.github_storage.upload_file(
+            content,
+            uploaded_file.name,
+            folder="data",
+            message="Upload from Streamlit"
+        )
+        if success:
+            st.success(f"✅ {uploaded_file.name} をアップロードしました！")
+            st.rerun()
+        else:
+            st.error("❌ アップロード失敗")
+# ===== ファイルダウンロード =====
+st.subheader("📥 GitHub からダウンロード")
+
+download_files = st.session_state.github_storage.list_files("data")
+if download_files:
+    file_to_download = st.selectbox("ダウンロードするファイルを選択:", [f['name'] for f in download_files])
+    
+    if st.button("⬇️ ダウンロード実行"):
+        # GitHub からファイル取得
+        file_info = next(f for f in download_files if f['name'] == file_to_download)
+        response = requests.get(file_info["download_url"])
+        if response.status_code == 200:
+            b64 = base64.b64encode(response.content).decode()
+            href = f'<a href="data:application/octet-stream;base64,{b64}" download="{file_to_download}">📂 {file_to_download} をダウンロード</a>'
+            st.markdown(href, unsafe_allow_html=True)
+        else:
+            st.error("❌ ダウンロード失敗")
 
 # メイン処理UI
 if st.session_state.github_storage and st.session_state.colab_client.servers:
