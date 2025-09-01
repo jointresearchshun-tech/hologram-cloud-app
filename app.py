@@ -153,7 +153,7 @@ def main():
         if st.button("➕ サーバー追加"):
             if st.session_state.colab_client.add_server(server_name, server_url):
                 st.success(f"✅ {server_name} を追加しました!")
-                st.experimental_rerun()
+                # ここで rerun は必要ありません
             else:
                 st.error("❌ サーバーに接続できませんでした")
 
@@ -170,7 +170,6 @@ def main():
         )
         if success:
             st.success(f"✅ {uploaded_file.name} をアップロードしました！")
-            st.experimental_rerun()
         else:
             st.error("❌ アップロード失敗")
 
