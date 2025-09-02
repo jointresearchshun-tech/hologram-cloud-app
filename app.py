@@ -1,4 +1,10 @@
 import streamlit as st
+import sys
+import os
+
+# add project root to sys.path for reliable imports
+sys.path.append(os.path.dirname(__file__))
+
 from config.logging_config import setup_logging
 from state.session_manager import initialize_session_state
 from ui.sidebar import sidebar
