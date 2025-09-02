@@ -1,5 +1,4 @@
 from github import Github
-import base64
 import logging
 
 
@@ -12,17 +11,15 @@ class GithubStorage:
     def upload_file(self, file_path: str, content: bytes, branch: str = "main"):
         """
         GitHub にファイルをアップロード（既存なら更新）。
-        バイナリファイルも扱えるよう Base64 でエンコードして保存。
+        ※ GitHub API が内部で Base64 変換するので、こちらではそのまま渡す。
         """
         try:
-            encoded_content = base64.b64encode(content).decode("utf-8")
-
             # Check if file exists
             contents = self.repo.get_contents(file_path, ref=branch)
             self.repo.update_file(
                 path=file_path,
                 message=f"Update {file_path}",
-                content=encoded_content,
+                content=content,   # ← Base64 変換しない
                 sha=contents.sha,
                 branch=branch,
             )
@@ -30,19 +27,15 @@ class GithubStorage:
 
         except Exception:
             # File does not exist, create new
-            encoded_content = base64.b64encode(content).decode("utf-8")
             self.repo.create_file(
                 path=file_path,
                 message=f"Upload {file_path}",
-                content=encoded_content,
+                content=content,   # ← Base64 変換しない
                 branch=branch,
             )
             self.logger.info(f"Created file: {file_path}")
 
     def list_files(self, path: str = "", branch: str = "main"):
-        """
-        リポジトリ内のファイル一覧を取得
-        """
         try:
             contents = self.repo.get_contents(path, ref=branch)
             return [c.path for c in contents]
@@ -52,19 +45,17 @@ class GithubStorage:
 
     def download_file(self, file_path: str, branch: str = "main") -> bytes:
         """
-        GitHub からファイルをダウンロード（Base64 デコードしてバイナリに戻す）
+        GitHub からファイルをダウンロード。
+        API が Base64 デコード済みの content を返すので、そのままバイナリ化。
         """
         try:
             file_content = self.repo.get_contents(file_path, ref=branch)
-            return base64.b64decode(file_content.content)
+            return file_content.decoded_content  # ← APIが自動でデコードしてくれる
         except Exception as e:
             self.logger.error(f"Failed to download {file_path}: {e}")
             raise
 
     def delete_file(self, file_path: str, branch: str = "main"):
-        """
-        GitHub からファイルを削除
-        """
         try:
             file_content = self.repo.get_contents(file_path, ref=branch)
             self.repo.delete_file(
