@@ -22,7 +22,7 @@ def file_management_ui():
 
     # List & Download & Delete
     st.markdown("### Repository Files (DATA folder only)")
-    files = github_client.list_files("DATA")
+    files = github_client.list_files("data")
 
     if files:
         for file_path in files:
