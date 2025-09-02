@@ -1,5 +1,5 @@
 import streamlit as st
-from services.github_service import connect_github
+from services.github_storage import connect_github
 
 def github_connect_ui(auto_connect=False):
     st.subheader("🔗 GitHub Connection")
