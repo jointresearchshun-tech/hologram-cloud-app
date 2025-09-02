@@ -17,7 +17,7 @@ def github_connect_ui(auto_connect=False):
 
     # Manual connect button
     if st.button("Connect to GitHub"):
-        from services.github_service import connect_github
+        from services.github_storage import connect_github
         success, msg = connect_github(token, repo)
         if success:
             st.success("✅ Connected to GitHub!")
