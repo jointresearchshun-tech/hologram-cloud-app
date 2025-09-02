@@ -1,6 +1,6 @@
 import streamlit as st
 import os
-from github_storage import GithubStorage
+from services.github_storage import GithubStorage
 
 # Initialize GitHub storage (read secrets from .streamlit/secrets.toml)
 github = GithubStorage(
