@@ -1,5 +1,5 @@
 import streamlit as st
-from github_storage import GithubStorage
+from services.github_storage import GithubStorage
 
 def main():
     st.set_page_config(page_title="GitHub File Manager", layout="wide")
