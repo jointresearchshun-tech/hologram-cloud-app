@@ -14,7 +14,7 @@ def main():
 
     # ✅ 自動で GitHub 接続を試みる
     with st.spinner("Connecting to GitHub..."):
-        github_connect_ui(auto_connect=True)  # ← オプションを付けて自動化
+        github_connect_ui(auto_connect=True)
 
     # Colab UI
     integrated_colab_ui()
