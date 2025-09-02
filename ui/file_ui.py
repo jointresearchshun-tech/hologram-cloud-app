@@ -1,30 +1,53 @@
 import streamlit as st
-from services.github_storage import GithubStorage
 
-def file_operations_ui():
-    st.subheader("📂 File Operations")
+def file_management_ui():
+    st.subheader("📂 File Management")
 
-    mode = st.radio("Select file source:", ["Local DATA folder", "GitHub DATA folder"])
+    github_client = st.session_state.get("github_client")
+    if not github_client:
+        st.warning("⚠️ Please connect to GitHub first.")
+        return
 
-    if mode == "Local DATA folder":
-        uploaded = st.file_uploader("Upload a file", type=["txt", "csv", "json", "png", "jpg"])
-        if uploaded:
-            st.success(f"File uploaded: {uploaded.name}")
-            content = uploaded.read()
-            st.code(content[:500], language="text")
+    # Upload
+    st.markdown("### Upload File")
+    uploaded_file = st.file_uploader("Choose a file to upload")
+    if uploaded_file and st.button("Upload to GitHub"):
+        try:
+            github_client.upload_file(uploaded_file.name, uploaded_file.read())
+            st.success(f"Uploaded {uploaded_file.name}")
+        except Exception as e:
+            st.error(f"Upload failed: {e}")
 
-    elif mode == "GitHub DATA folder":
-        token = st.secrets["github"]["token"]
-        repo_name = st.secrets["github"]["repo"]
-        storage = GithubStorage(token, repo_name)
+    st.divider()
 
-        files = storage.list_files("DATA")
-        selected = st.selectbox("Select a file in GitHub/DATA:", files)
-
-        if selected:
-            content = storage.download_file(selected).decode("utf-8", errors="ignore")
-            st.text_area("File content", value=content, height=300, key="github_file_editor")
-
-            if st.button("💾 Save changes"):
-                storage.upload_file(selected, content.encode("utf-8"))
-                st.success("File updated on GitHub ✅")
+    # List & Download & Delete
+    st.markdown("### Repository Files")
+    files = github_client.list_files()
+    if files:
+        for file_path in files:
+            col1, col2, col3 = st.columns([3, 1, 1])
+            with col1:
+                st.write(file_path)
+            with col2:
+                if st.button("Download", key=f"dl_{file_path}"):
+                    try:
+                        content = github_client.download_file(file_path)
+                        st.download_button(
+                            label="Save File",
+                            data=content,
+                            file_name=file_path,
+                            mime="application/octet-stream",
+                            key=f"save_{file_path}"
+                        )
+                    except Exception as e:
+                        st.error(f"Download failed: {e}")
+            with col3:
+                if st.button("Delete", key=f"del_{file_path}"):
+                    try:
+                        github_client.delete_file(file_path)
+                        st.success(f"Deleted {file_path}")
+                        st.experimental_rerun()
+                    except Exception as e:
+                        st.error(f"Delete failed: {e}")
+    else:
+        st.info("No files found in repository.")
