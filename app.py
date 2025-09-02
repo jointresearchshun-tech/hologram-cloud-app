@@ -287,37 +287,125 @@ def setup_github_connection():
     st.subheader("🔧 GitHub Storage 設定")
     
     # Secrets からの自動設定を試行
+    github_connected = False
     try:
         if st.session_state.github_storage is None:
-            token = st.secrets["github"]["token"]
-            repo = st.secrets["github"]["default_repo"]
+            # 複数の設定パターンを試行
+            token = None
+            repo = None
             
-            github_storage = GitHubStorage(token, repo)
-            if github_storage.test_connection():
-                st.session_state.github_storage = github_storage
-                st.success(f"✅ GitHub 自動接続成功: {repo}")
-                return True
-            else:
-                st.error("❌ Secrets の GitHub 設定が無効です")
-    except Exception as e:
-        st.warning("⚠️ Secrets に GitHub 設定が見つかりません")
-    
-    # 手動設定UI
-    with st.expander("手動 GitHub 設定", expanded=st.session_state.github_storage is None):
-        manual_token = st.text_input("GitHub Token:", type="password")
-        manual_repo = st.text_input("Repository (owner/repo):", placeholder="username/repository-name")
-        
-        if st.button("🔗 GitHub 接続"):
-            if manual_token and manual_repo:
-                github_storage = GitHubStorage(manual_token, manual_repo)
+            # パターン1: github.token, github.default_repo
+            try:
+                token = st.secrets["github"]["token"]
+                repo = st.secrets["github"]["default_repo"]
+            except KeyError:
+                pass
+            
+            # パターン2: GITHUB_TOKEN, GITHUB_REPO
+            if not token:
+                try:
+                    token = st.secrets["GITHUB_TOKEN"]
+                    repo = st.secrets["GITHUB_REPO"]
+                except KeyError:
+                    pass
+            
+            # パターン3: github_token, github_repo
+            if not token:
+                try:
+                    token = st.secrets["github_token"]
+                    repo = st.secrets["github_repo"]
+                except KeyError:
+                    pass
+            
+            if token and repo:
+                github_storage = GitHubStorage(token, repo)
                 if github_storage.test_connection():
                     st.session_state.github_storage = github_storage
-                    st.success(f"✅ GitHub 手動接続成功: {manual_repo}")
-                    st.rerun()
+                    st.success(f"✅ GitHub 自動接続成功: {repo}")
+                    github_connected = True
                 else:
-                    st.error("❌ GitHub 接続に失敗しました")
+                    st.error(f"❌ GitHub 接続失敗: {repo}")
+                    st.info("トークンの権限やリポジトリ名を確認してください")
             else:
-                st.error("Token と Repository を入力してください")
+                st.info("💡 Secrets に GitHub 設定が見つかりません")
+                
+    except Exception as e:
+        st.warning(f"⚠️ Secrets 読み込みエラー: {str(e)}")
+    
+    # Secrets設定の詳細ガイド
+    if not github_connected:
+        with st.expander("📋 Secrets設定ガイド", expanded=False):
+            st.markdown("""
+            **Streamlit Cloud での Secrets 設定方法:**
+            
+            1. **GitHub Personal Access Token を作成:**
+               - GitHub Settings → Developer settings → Personal access tokens → Tokens (classic)
+               - "Generate new token (classic)" をクリック
+               - スコープで `repo` にチェック
+               - トークンをコピー
+            
+            2. **Streamlit Cloud の Secrets に追加:**
+               ```toml
+               [github]
+               token = "ghp_your_token_here"
+               default_repo = "username/repository-name"
+               ```
+               
+            **または:**
+               ```toml
+               GITHUB_TOKEN = "ghp_your_token_here"
+               GITHUB_REPO = "username/repository-name"
+               ```
+            
+            3. **リポジトリを作成:**
+               - GitHub で新しいリポジトリを作成
+               - `data/` と `results/` フォルダを作成
+            """)
+    
+    # 手動設定UI
+    with st.expander("🔧 手動 GitHub 設定", expanded=not github_connected):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            manual_token = st.text_input(
+                "GitHub Token:", 
+                type="password",
+                help="ghp_ で始まるPersonal Access Token"
+            )
+        
+        with col2:
+            manual_repo = st.text_input(
+                "Repository (owner/repo):", 
+                placeholder="username/repository-name",
+                help="例: john/my-hologram-project"
+            )
+        
+        if st.button("🔗 GitHub 接続テスト"):
+            if manual_token and manual_repo:
+                with st.spinner("接続テスト中..."):
+                    github_storage = GitHubStorage(manual_token, manual_repo)
+                    if github_storage.test_connection():
+                        st.session_state.github_storage = github_storage
+                        st.success(f"✅ GitHub 手動接続成功: {manual_repo}")
+                        st.balloons()
+                        st.rerun()
+                    else:
+                        st.error("❌ GitHub 接続に失敗しました")
+                        st.info("以下を確認してください:")
+                        st.info("• トークンが正しい")
+                        st.info("• リポジトリが存在する")
+                        st.info("• トークンに repo 権限がある")
+            else:
+                st.error("Token と Repository を両方入力してください")
+        
+        # テスト用のサンプル設定
+        if st.button("📝 サンプル設定で試す"):
+            st.code("""
+# GitHub でテスト用リポジトリを作成後、以下をSecrets に設定:
+[github]
+token = "ghp_your_actual_token_here"
+default_repo = "your-username/hologram-test"
+            """)
     
     return st.session_state.github_storage is not None
 
@@ -625,8 +713,9 @@ def main():
     # GitHub接続設定
     github_connected = setup_github_connection()
     
-    # Colabサーバー管理
-    manage_colab_servers()
+    # Colabサーバー管理（新しい統合版）
+    from practical_colab_solution import integrated_colab_ui
+    integrated_colab_ui()
     
     st.divider()
     
