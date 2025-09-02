@@ -1,60 +1,75 @@
 import streamlit as st
-from services.github_storage import GithubStorage
+import os
+from github_storage import GithubStorage
+
+# Initialize GitHub storage (read secrets from .streamlit/secrets.toml)
+github = GithubStorage(
+    token=st.secrets["github"]["token"],
+    repo_name=st.secrets["github"]["repo"]
+)
+
+DATA_DIR = "DATA"
+os.makedirs(DATA_DIR, exist_ok=True)
 
 def main():
-    st.set_page_config(page_title="GitHub File Manager", layout="wide")
-    st.title("📂 GitHub File Manager")
+    st.title("📂 File Manager")
 
-    # Load GitHub credentials from secrets
-    try:
-        token = st.secrets["github"]["token"]
-        repo = st.secrets["github"]["repo"]
-    except Exception as e:
-        st.error("❌ Missing GitHub credentials in secrets.toml")
-        st.stop()
+    # Mode selection
+    mode = st.radio("Choose operation:", ["Local DATA folder", "Create new file", "GitHub files"])
 
-    storage = GithubStorage(token, repo)
+    # === Local DATA folder ===
+    if mode == "Local DATA folder":
+        st.subheader("DATA/ Folder Files")
 
-    # --- Upload file ---
-    st.subheader("⬆️ Upload File")
-    uploaded_file = st.file_uploader("Choose a file", type=None)
-    if uploaded_file is not None:
-        content = uploaded_file.read()
-        file_path = f"uploads/{uploaded_file.name}"
-        try:
-            storage.upload_file(file_path, content)
-            st.success(f"✅ Uploaded `{file_path}` to GitHub")
-        except Exception as e:
-            st.error(f"❌ Upload failed: {str(e)}")
+        files = os.listdir(DATA_DIR)
+        if files:
+            selected = st.selectbox("Select a file:", files)
+            file_path = os.path.join(DATA_DIR, selected)
 
-    # --- List files ---
-    st.subheader("📋 Files in Repository")
-    files = storage.list_files("uploads")
-    if not files:
-        st.info("No files found in `uploads/` folder.")
-    else:
-        st.write("### Available Files:")
-        for f in files:
-            st.write(f"- {f}")
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                content = f.read()
+            st.text_area("File Content:", content, height=200)
 
-        # --- Download file ---
-        file_to_download = st.selectbox("Select a file to download", files)
-        if st.button("⬇️ Download selected file"):
-            try:
-                data = storage.download_file(file_to_download)
-                st.download_button("Download File", data, file_to_download)
-            except Exception as e:
-                st.error(f"❌ Download failed: {str(e)}")
+        else:
+            st.info("No files in DATA/ yet.")
 
-        # --- Delete file ---
-        file_to_delete = st.selectbox("Select a file to delete", files)
-        if st.button("🗑️ Delete selected file"):
-            try:
-                storage.delete_file(file_to_delete)
-                st.success(f"✅ Deleted `{file_to_delete}` from GitHub")
-            except Exception as e:
-                st.error(f"❌ Delete failed: {str(e)}")
+    # === Create new file ===
+    elif mode == "Create new file":
+        st.subheader("Create a New File in DATA/")
 
+        filename = st.text_input("Filename (e.g., test.txt):")
+        content = st.text_area("Content:")
+
+        if st.button("Save"):
+            if filename:
+                file_path = os.path.join(DATA_DIR, filename)
+                with open(file_path, "w", encoding="utf-8") as f:
+                    f.write(content)
+                st.success(f"File saved: {file_path}")
+            else:
+                st.error("Please enter a filename.")
+
+    # === GitHub files ===
+    elif mode == "GitHub files":
+        st.subheader("GitHub Files")
+
+        files = github.list_files()
+        if files:
+            selected = st.selectbox("Select a GitHub file:", files)
+
+            if st.button("Download from GitHub"):
+                content = github.download_file(selected).decode("utf-8", errors="ignore")
+                st.text_area("File Content:", content, height=200)
+
+                # Optionally save to local DATA folder
+                save_local = st.checkbox("Also save to DATA/")
+                if save_local:
+                    local_path = os.path.join(DATA_DIR, os.path.basename(selected))
+                    with open(local_path, "w", encoding="utf-8") as f:
+                        f.write(content)
+                    st.success(f"Saved to {local_path}")
+        else:
+            st.info("No files found in GitHub repository.")
 
 if __name__ == "__main__":
     main()
