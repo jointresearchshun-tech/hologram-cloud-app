@@ -267,210 +267,6 @@ class ColabServerClient:
         except requests.RequestException:
             return False
 
-# ===== Colab統合UI =====
-def integrated_colab_ui():
-    """統合されたColab UIを提供"""
-    st.subheader("🖥️ Google Colab サーバー管理")
-    
-    tab1, tab2, tab3 = st.tabs(["🔧 サーバー設定", "📋 サーバー一覧", "🚀 クイック起動"])
-    
-    with tab1:
-        st.write("**新しいColabサーバーを追加:**")
-        
-        col1, col2 = st.columns([1, 2])
-        
-        with col1:
-            server_name = st.text_input("サーバー名:", placeholder="My Colab Server", key="server_name_input")
-        with col2:
-            server_url = st.text_input(
-                "ngrok URL:", 
-                placeholder="https://abc123.ngrok.io", 
-                help="ColabからのngrokURLを貼り付けてください",
-                key="server_url_input"
-            )
-        
-        if st.button("➕ サーバー追加", type="primary"):
-            if server_name and server_url:
-                with st.spinner(f"{server_name} に接続中..."):
-                    if st.session_state.colab_client.add_server(server_name, server_url):
-                        st.success(f"✅ {server_name} を追加しました！")
-                        st.balloons()
-                        st.rerun()
-                    else:
-                        st.error("❌ サーバーに接続できませんでした")
-                        st.info("以下を確認してください：")
-                        st.info("• ngrok URLが正しい")
-                        st.info("• Colabサーバーが動作中")
-                        st.info("• ファイアウォールの問題がない")
-            else:
-                st.error("サーバー名とURLの両方を入力してください")
-    
-    with tab2:
-        if st.session_state.colab_client.servers:
-            st.write("**登録済みサーバー一覧:**")
-            
-            for i, server in enumerate(st.session_state.colab_client.servers):
-                with st.container():
-                    col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
-                    
-                    with col1:
-                        status_icons = {"healthy": "🟢", "unhealthy": "🟡", "unreachable": "🔴"}
-                        current_mark = " ⭐(現在使用中)" if server == st.session_state.colab_client.current_server else ""
-                        st.write(f"{status_icons.get(server['status'], '⚪')} **{server['name']}**{current_mark}")
-                        st.caption(f"URL: {server['url']}")
-                    
-                    with col2:
-                        if st.button("選択", key=f"select_{i}"):
-                            st.session_state.colab_client.switch_server(server['name'])
-                            st.success(f"サーバーを {server['name']} に切り替えました")
-                            st.rerun()
-                    
-                    with col3:
-                        if st.button("削除", key=f"delete_{i}"):
-                            st.session_state.colab_client.remove_server(server['name'])
-                            st.success(f"{server['name']} を削除しました")
-                            st.rerun()
-                    
-                    with col4:
-                        if st.button("テスト", key=f"test_{i}"):
-                            with st.spinner("接続テスト中..."):
-                                st.session_state.colab_client.check_all_servers()
-                                st.rerun()
-                
-                st.divider()
-            
-            if st.button("🔄 全サーバー状態更新"):
-                with st.spinner("全サーバーの状態をチェック中..."):
-                    st.session_state.colab_client.check_all_servers()
-                st.rerun()
-        else:
-            st.info("登録されているサーバーがありません。新しいサーバーを追加してください。")
-    
-    with tab3:
-        st.write("**Colab サーバーのクイック起動コード:**")
-        
-        colab_code = '''
-# Google Colabで実行するコード
-!pip install flask pyngrok requests
-!pip install torch torchvision
-
-# サーバーコードを作成
-server_code = """
-from flask import Flask, request, jsonify
-import json
-import time
-from datetime import datetime
-import threading
-import logging
-
-app = Flask(__name__)
-logging.basicConfig(level=logging.INFO)
-
-# ジョブ管理
-jobs = {}
-
-@app.route('/health', methods=['GET'])
-def health():
-    return jsonify({
-        "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
-        "server_info": "Colab GPU Server",
-        "active_jobs": len(jobs)
-    })
-
-@app.route('/submit_job', methods=['POST'])
-def submit_job():
-    job_data = request.get_json()
-    job_id = job_data.get('job_id', f'job_{int(time.time())}')
-    
-    jobs[job_id] = {
-        "status": "pending",
-        "submitted_at": datetime.now().isoformat(),
-        **job_data
-    }
-    
-    # バックグラウンドで処理開始
-    threading.Thread(target=process_job, args=(job_id,)).start()
-    
-    return jsonify({"job_id": job_id, "status": "submitted"})
-
-@app.route('/job_status/<job_id>', methods=['GET'])
-def get_job_status(job_id):
-    if job_id in jobs:
-        return jsonify(jobs[job_id])
-    else:
-        return jsonify({"error": "Job not found"}), 404
-
-@app.route('/cancel_job/<job_id>', methods=['POST'])
-def cancel_job(job_id):
-    if job_id in jobs:
-        jobs[job_id]["status"] = "cancelled"
-        return jsonify({"status": "cancelled"})
-    return jsonify({"error": "Job not found"}), 404
-
-def process_job(job_id):
-    try:
-        jobs[job_id]["status"] = "running"
-        jobs[job_id]["started_at"] = datetime.now().isoformat()
-        
-        # ここに実際の処理を実装
-        print(f"Processing job {job_id}")
-        
-        # サンプル処理（5秒待機）
-        time.sleep(5)
-        
-        jobs[job_id]["status"] = "completed"
-        jobs[job_id]["completed_at"] = datetime.now().isoformat()
-        
-    except Exception as e:
-        jobs[job_id]["status"] = "failed"
-        jobs[job_id]["error"] = str(e)
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
-"""
-
-# ファイルに保存
-with open('colab_server.py', 'w') as f:
-    f.write(server_code)
-
-# ngrok設定
-from pyngrok import ngrok
-import threading
-import subprocess
-
-# Flask サーバーをバックグラウンドで起動
-server_process = subprocess.Popen(['python', 'colab_server.py'])
-
-# ngrokトンネルを作成
-public_url = ngrok.connect(5000)
-print(f"✅ Colab サーバー起動完了!")
-print(f"🌐 Public URL: {public_url}")
-print(f"📋 この URL を Streamlit アプリに登録してください")
-print("🔄 Ctrl+C で終了")
-
-try:
-    server_process.wait()
-except KeyboardInterrupt:
-    print("\\n🛑 サーバーを終了中...")
-    ngrok.disconnect(public_url)
-    server_process.terminate()
-'''
-        
-        st.code(colab_code, language='python')
-        
-        st.info("👆 このコードをGoogle Colabの新しいノートブックにコピー&ペーストして実行してください")
-        
-        with st.expander("📖 使用方法"):
-            st.markdown("""
-            1. **Google Colabを開く**: [colab.research.google.com](https://colab.research.google.com)
-            2. **新しいノートブック**を作成
-            3. **GPUを有効化**: ランタイム → ランタイムのタイプを変更 → GPU
-            4. **上のコード**をセルにコピーして実行
-            5. **表示されるURL**をこのアプリの「サーバー追加」に登録
-            6. **処理開始**！
-            """)
-
 # ===== セッション状態の初期化 =====
 def initialize_session_state():
     """セッション状態を初期化"""
@@ -490,30 +286,7 @@ def setup_github_connection():
     """GitHub接続の設定"""
     st.subheader("🔧 GitHub Storage 設定")
     
-    # GitHub接続状態の確認
-    if st.session_state.github_storage:
-        st.success(f"✅ GitHub 接続済み: {st.session_state.github_storage.repo}")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🔄 接続テスト"):
-                with st.spinner("接続確認中..."):
-                    if st.session_state.github_storage.test_connection():
-                        st.success("✅ 接続確認OK")
-                    else:
-                        st.error("❌ 接続に問題があります")
-                        st.session_state.github_storage = None
-                        st.rerun()
-        
-        with col2:
-            if st.button("🔌 接続をリセット"):
-                st.session_state.github_storage = None
-                st.success("接続をリセットしました")
-                st.rerun()
-        
-        return True
-    
-    # 自動設定の試行
+    # Secrets からの自動設定を試行
     github_connected = False
     try:
         if st.session_state.github_storage is None:
@@ -521,118 +294,173 @@ def setup_github_connection():
             token = None
             repo = None
             
-            # Streamlit Secrets の各パターンを試行
-            secrets_patterns = [
-                ("github", ["token", "default_repo"]),
-                ("github", ["TOKEN", "REPO"]),
-                ("GITHUB", ["TOKEN", "REPO"]),
-                (None, ["GITHUB_TOKEN", "GITHUB_REPO"]),
-                (None, ["github_token", "github_repo"])
-            ]
+            # パターン1: github.token, github.default_repo
+            try:
+                token = st.secrets["github"]["token"]
+                repo = st.secrets["github"]["default_repo"]
+            except KeyError:
+                pass
             
-            for section, keys in secrets_patterns:
+            # パターン2: GITHUB_TOKEN, GITHUB_REPO
+            if not token:
                 try:
-                    if section:
-                        token = st.secrets[section][keys[0]]
-                        repo = st.secrets[section][keys[1]]
-                    else:
-                        token = st.secrets[keys[0]]
-                        repo = st.secrets[keys[1]]
-                    
-                    if token and repo:
-                        break
-                except (KeyError, AttributeError):
-                    continue
+                    token = st.secrets["GITHUB_TOKEN"]
+                    repo = st.secrets["GITHUB_REPO"]
+                except KeyError:
+                    pass
+            
+            # パターン3: github_token, github_repo
+            if not token:
+                try:
+                    token = st.secrets["github_token"]
+                    repo = st.secrets["github_repo"]
+                except KeyError:
+                    pass
             
             if token and repo:
-                with st.spinner("GitHub接続中..."):
-                    github_storage = GitHubStorage(token, repo)
-                    if github_storage.test_connection():
-                        st.session_state.github_storage = github_storage
-                        st.success(f"✅ GitHub 自動接続成功: {repo}")
-                        github_connected = True
-                        st.rerun()
-                    else:
-                        st.error(f"❌ GitHub 接続失敗: {repo}")
-                        st.error("以下を確認してください:")
-                        st.error("• トークンが有効")
-                        st.error("• リポジトリが存在する")
-                        st.error("• トークンに適切な権限がある (repo スコープ)")
+                github_storage = GitHubStorage(token, repo)
+                if github_storage.test_connection():
+                    st.session_state.github_storage = github_storage
+                    st.success(f"✅ GitHub 自動接続成功: {repo}")
+                    github_connected = True
+                else:
+                    st.error(f"❌ GitHub 接続失敗: {repo}")
+                    st.info("トークンの権限やリポジトリ名を確認してください")
             else:
-                st.info("💡 GitHub設定が見つからないため、手動設定してください")
+                st.info("💡 Secrets に GitHub 設定が見つかりません")
                 
     except Exception as e:
-        st.warning(f"⚠️ 設定読み込みエラー: {str(e)}")
+        st.warning(f"⚠️ Secrets 読み込みエラー: {str(e)}")
+    
+    # Secrets設定の詳細ガイド
+    if not github_connected:
+        with st.expander("📋 Secrets設定ガイド", expanded=False):
+            st.markdown("""
+            **Streamlit Cloud での Secrets 設定方法:**
+            
+            1. **GitHub Personal Access Token を作成:**
+               - GitHub Settings → Developer settings → Personal access tokens → Tokens (classic)
+               - "Generate new token (classic)" をクリック
+               - スコープで `repo` にチェック
+               - トークンをコピー
+            
+            2. **Streamlit Cloud の Secrets に追加:**
+               ```toml
+               [github]
+               token = "ghp_your_token_here"
+               default_repo = "username/repository-name"
+               ```
+               
+            **または:**
+               ```toml
+               GITHUB_TOKEN = "ghp_your_token_here"
+               GITHUB_REPO = "username/repository-name"
+               ```
+            
+            3. **リポジトリを作成:**
+               - GitHub で新しいリポジトリを作成
+               - `data/` と `results/` フォルダを作成
+            """)
     
     # 手動設定UI
-    if not github_connected:
-        with st.expander("🔧 GitHub 手動設定", expanded=True):
-            st.markdown("""
-            **Streamlit Cloud での GitHub 設定方法:**
-            
-            1. **GitHubでPersonal Access Tokenを作成:**
-               - GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)
-               - "Generate new token (classic)"
-               - Expiration: 無期限 または 適切な期間
-               - Scopes: `repo` にチェック ✅
-               - "Generate token" → トークンをコピー
-            
-            2. **GitHubでリポジトリを作成:**
-               - 新しいリポジトリを作成
-               - `data/` フォルダを作成 (README.md等を追加)
-               - `results/` フォルダも作成しておく
-            
-            3. **Streamlit Cloud のSecrets設定:**
-            """)
-            
-            st.code('''
-# App settings → Secrets に以下を追加:
+    with st.expander("🔧 手動 GitHub 設定", expanded=not github_connected):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            manual_token = st.text_input(
+                "GitHub Token:", 
+                type="password",
+                help="ghp_ で始まるPersonal Access Token"
+            )
+        
+        with col2:
+            manual_repo = st.text_input(
+                "Repository (owner/repo):", 
+                placeholder="username/repository-name",
+                help="例: john/my-hologram-project"
+            )
+        
+        if st.button("🔗 GitHub 接続テスト"):
+            if manual_token and manual_repo:
+                with st.spinner("接続テスト中..."):
+                    github_storage = GitHubStorage(manual_token, manual_repo)
+                    if github_storage.test_connection():
+                        st.session_state.github_storage = github_storage
+                        st.success(f"✅ GitHub 手動接続成功: {manual_repo}")
+                        st.balloons()
+                        st.rerun()
+                    else:
+                        st.error("❌ GitHub 接続に失敗しました")
+                        st.info("以下を確認してください:")
+                        st.info("• トークンが正しい")
+                        st.info("• リポジトリが存在する")
+                        st.info("• トークンに repo 権限がある")
+            else:
+                st.error("Token と Repository を両方入力してください")
+        
+        # テスト用のサンプル設定
+        if st.button("📝 サンプル設定で試す"):
+            st.code("""
+# GitHub でテスト用リポジトリを作成後、以下をSecrets に設定:
 [github]
-token = "ghp_your_token_here"
-default_repo = "username/repository-name"
-            ''')
-            
-            st.divider()
-            
-            # 手動入力フォーム
-            st.write("**または手動で入力:**")
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                manual_token = st.text_input(
-                    "GitHub Personal Access Token:", 
-                    type="password",
-                    placeholder="ghp_xxxxxxxxxxxxxxxxxxxx",
-                    help="GitHubのPersonal Access Token (repo権限必要)"
-                )
-            
-            with col2:
-                manual_repo = st.text_input(
-                    "Repository (owner/repo):", 
-                    placeholder="username/my-hologram-project",
-                    help="GitHub リポジトリの形式: ユーザー名/リポジトリ名"
-                )
-            
-            if st.button("🔗 GitHub 接続テスト", type="primary"):
-                if manual_token and manual_repo:
-                    with st.spinner("GitHub 接続テスト中..."):
-                        github_storage = GitHubStorage(manual_token, manual_repo)
-                        if github_storage.test_connection():
-                            st.session_state.github_storage = github_storage
-                            st.success(f"✅ GitHub 接続成功: {manual_repo}")
-                            st.balloons()
-                            st.rerun()
-                        else:
-                            st.error("❌ GitHub 接続に失敗しました")
-                            st.error("確認事項:")
-                            st.error("• トークンが正しい (ghp_で始まる)")
-                            st.error("• リポジトリが存在し、アクセス可能")
-                            st.error("• トークンにrepo権限がある")
-                else:
-                    st.error("TokenとRepositoryの両方を入力してください")
+token = "ghp_your_actual_token_here"
+default_repo = "your-username/hologram-test"
+            """)
     
     return st.session_state.github_storage is not None
+
+def manage_colab_servers():
+    """Colabサーバー管理UI"""
+    st.subheader("🖥️ Google Colab サーバー管理")
+    
+    # 既存サーバー一覧
+    if st.session_state.colab_client.servers:
+        st.write("**登録済みサーバー:**")
+        for i, server in enumerate(st.session_state.colab_client.servers):
+            col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+            
+            with col1:
+                status_color = {"healthy": "🟢", "unhealthy": "🟡", "unreachable": "🔴"}
+                current_mark = " (現在)" if server == st.session_state.colab_client.current_server else ""
+                st.write(f"{status_color.get(server['status'], '⚪')} {server['name']}{current_mark}")
+            
+            with col2:
+                if st.button(f"選択", key=f"select_{i}"):
+                    st.session_state.colab_client.switch_server(server['name'])
+                    st.success(f"サーバーを {server['name']} に切り替えました")
+                    st.rerun()
+            
+            with col3:
+                if st.button(f"削除", key=f"delete_{i}"):
+                    st.session_state.colab_client.remove_server(server['name'])
+                    st.success(f"{server['name']} を削除しました")
+                    st.rerun()
+            
+            with col4:
+                if st.button(f"テスト", key=f"test_{i}"):
+                    with st.spinner("テスト中..."):
+                        st.session_state.colab_client.check_all_servers()
+                    st.rerun()
+    
+    # 新しいサーバー追加
+    with st.expander("🆕 新しいサーバーを追加"):
+        col1, col2 = st.columns([1, 2])
+        
+        with col1:
+            server_name = st.text_input("サーバー名:", placeholder="Colab Server 1")
+        with col2:
+            server_url = st.text_input("ngrok URL:", placeholder="https://abc123.ngrok.io")
+        
+        if st.button("➕ サーバー追加"):
+            if server_name and server_url:
+                with st.spinner(f"{server_name} に接続中..."):
+                    if st.session_state.colab_client.add_server(server_name, server_url):
+                        st.success(f"✅ {server_name} を追加しました！")
+                        st.rerun()
+                    else:
+                        st.error("❌ サーバーに接続できませんでした。URLを確認してください。")
+            else:
+                st.error("サーバー名とURLを入力してください")
 
 def file_management_ui():
     """ファイル管理UI"""
@@ -705,3 +533,204 @@ def file_management_ui():
                                 st.markdown(href, unsafe_allow_html=True)
                             else:
                                 st.error("ダウンロード失敗")
+        else:
+            st.info(f"{folder_to_view} フォルダにファイルがありません")
+
+def processing_ui():
+    """メイン処理UI"""
+    if not (st.session_state.github_storage and st.session_state.colab_client.servers):
+        st.warning("GitHub接続とColabサーバーの設定を完了してください")
+        return
+    
+    st.subheader("🔬 クラウド処理実行")
+    
+    # 入力ファイル選択
+    input_files = st.session_state.github_storage.list_files("data", [".pt", ".pth", ".zip"])
+    
+    if not input_files:
+        st.info("処理対象のファイルがありません。先にファイルをアップロードしてください。")
+        return
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        selected_file = st.selectbox("処理対象ファイル:", [f['name'] for f in input_files])
+        file_info = next(f for f in input_files if f["name"] == selected_file)
+        
+        st.write(f"**選択ファイル:** {file_info['name']} ({file_info['size']:,} bytes)")
+    
+    with col2:
+        processing_type = st.selectbox(
+            "処理タイプ:", 
+            ["hologram_processing", "image_analysis", "custom_processing"]
+        )
+    
+    # 処理設定
+    with st.expander("⚙️ 詳細設定"):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            batch_size = st.number_input("バッチサイズ:", min_value=1, max_value=128, value=32)
+            quality = st.select_slider("品質設定:", options=["低", "中", "高"], value="中")
+        
+        with col2:
+            use_gpu = st.checkbox("GPU使用", value=True)
+            save_intermediate = st.checkbox("中間結果を保存", value=False)
+    
+    # 処理実行
+    if st.button("🚀 クラウド処理開始", type="primary"):
+        processing_config = {
+            "type": processing_type,
+            "batch_size": batch_size,
+            "quality": quality,
+            "use_gpu": use_gpu,
+            "save_intermediate": save_intermediate,
+            "output_folder": "results"
+        }
+        
+        github_config = {
+            "repo": st.session_state.github_storage.repo,
+            "token": st.session_state.github_storage.token
+        }
+        
+        with st.spinner("ジョブを投入中..."):
+            job_id, error = st.session_state.colab_client.submit_job(
+                github_config, file_info, processing_config
+            )
+        
+        if job_id:
+            st.session_state.current_jobs[job_id] = {
+                "file": selected_file,
+                "config": processing_config,
+                "started_at": datetime.now(),
+                "server": st.session_state.colab_client.current_server['name']
+            }
+            st.success(f"✅ 処理開始: {job_id}")
+            st.rerun()
+        else:
+            st.error(f"❌ {error}")
+
+def job_monitoring_ui():
+    """ジョブ監視UI"""
+    if not st.session_state.current_jobs:
+        return
+    
+    st.subheader("📊 処理状況監視")
+    
+    for job_id, job_info in list(st.session_state.current_jobs.items()):
+        with st.container():
+            col1, col2, col3 = st.columns([3, 1, 1])
+            
+            with col1:
+                st.write(f"**{job_id}**")
+                st.write(f"ファイル: {job_info['file']} | サーバー: {job_info['server']}")
+            
+            with col2:
+                if st.button("🔄", key=f"refresh_{job_id}", help="状態更新"):
+                    job_status = st.session_state.colab_client.get_job_status(job_id)
+                    st.json(job_status)
+            
+            with col3:
+                if st.button("❌", key=f"cancel_{job_id}", help="キャンセル"):
+                    if st.session_state.colab_client.cancel_job(job_id):
+                        del st.session_state.current_jobs[job_id]
+                        st.success("ジョブをキャンセルしました")
+                        st.rerun()
+            
+            # 状態表示
+            job_status = st.session_state.colab_client.get_job_status(job_id)
+            
+            status_colors = {
+                "pending": "🟡",
+                "running": "🟢", 
+                "completed": "✅",
+                "failed": "❌",
+                "cancelled": "⚪"
+            }
+            
+            status = job_status.get("status", "unknown")
+            st.write(f"{status_colors.get(status, '❓')} 状態: {status}")
+            
+            if status in ["completed", "failed", "cancelled"]:
+                # 完了したジョブは履歴に移動
+                st.session_state.processing_history.append({
+                    "job_id": job_id,
+                    "status": status,
+                    "completed_at": datetime.now(),
+                    **job_info
+                })
+                del st.session_state.current_jobs[job_id]
+                st.rerun()
+            
+            st.divider()
+
+# ===== サイドバー =====
+def sidebar():
+    """サイドバーUI"""
+    with st.sidebar:
+        st.title("⚙️ システム設定")
+        
+        # システム状態
+        st.subheader("📈 システム状態")
+        
+        github_status = "✅ 接続済み" if st.session_state.github_storage else "❌ 未接続"
+        st.write(f"GitHub: {github_status}")
+        
+        colab_status = f"✅ {len(st.session_state.colab_client.servers)}台" if st.session_state.colab_client.servers else "❌ 未接続"
+        st.write(f"Colab: {colab_status}")
+        
+        active_jobs = len(st.session_state.current_jobs)
+        st.write(f"アクティブジョブ: {active_jobs}")
+        
+        # 処理履歴
+        if st.session_state.processing_history:
+            st.subheader("📋 処理履歴")
+            for record in st.session_state.processing_history[-5:]:  # 最新5件
+                st.write(f"{record['status']} {record['file']}")
+        
+        # システム情報
+        st.subheader("ℹ️ システム情報")
+        st.write("**各サービスの役割:**")
+        st.write("🖥️ **Streamlit**: UI・制御")
+        st.write("📁 **GitHub**: ファイル保管")
+        st.write("⚡ **Colab**: GPU処理実行")
+        
+        if st.button("🔄 システム全体をリフレッシュ"):
+            # サーバー状態チェック
+            if st.session_state.colab_client.servers:
+                st.session_state.colab_client.check_all_servers()
+            st.rerun()
+
+# ===== メインアプリケーション =====
+def main():
+    """メインアプリケーション"""
+    st.title("☁️ 完全クラウド型ホログラム処理システム")
+    st.markdown("**あなたのPC性能は一切使用しません - すべてクラウドで処理**")
+    
+    # サイドバー
+    sidebar()
+    
+    # GitHub接続設定
+    github_connected = setup_github_connection()
+    
+    # Colabサーバー管理（新しい統合版）
+    from practical_colab_solution import integrated_colab_ui
+    integrated_colab_ui()
+    
+    st.divider()
+    
+    if github_connected:
+        # ファイル管理UI
+        file_management_ui()
+        
+        st.divider()
+        
+        # 処理実行UI
+        processing_ui()
+        
+        # ジョブ監視UI
+        job_monitoring_ui()
+
+if __name__ == "__main__":
+    initialize_session_state()
+    main()
