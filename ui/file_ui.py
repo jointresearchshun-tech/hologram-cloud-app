@@ -46,7 +46,7 @@ def file_management_ui():
                     try:
                         github_client.delete_file(file_path)
                         st.success(f"Deleted {file_path}")
-                        st.experimental_rerun()
+                        st.rerun()  # ✅ experimental_rerun の代わり
                     except Exception as e:
                         st.error(f"Delete failed: {e}")
     else:
