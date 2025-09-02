@@ -1,22 +1,19 @@
 import streamlit as st
 
-def manage_colab_servers():
-    st.subheader("⚙️ Colab Server Management (manual)")
+def colab_connect_ui(auto_connect: bool = False):
+    st.subheader("🔗 Google Colab Connection")
 
-    if "colab_servers" not in st.session_state:
-        st.session_state["colab_servers"] = []
+    if auto_connect:
+        # For future expansion with st.secrets
+        st.success("✅ Connected to Google Colab (auto mode)")
+        return
 
-    new_name = st.text_input("Server Name")
-    new_url = st.text_input("Server URL (e.g. https://xxxx.ngrok.io)")
+    # Manual connection (ngrok public URL)
+    colab_url = st.text_input("Enter Colab server URL", key="colab_url")
 
-    if st.button("Add Server"):
-        if new_name and new_url:
-            st.session_state["colab_servers"].append({"name": new_name, "url": new_url})
-            st.success(f"Added server: {new_name}")
+    if st.button("Connect to Colab"):
+        if colab_url:
+            st.session_state["colab_url"] = colab_url
+            st.success(f"✅ Connected to Colab: {colab_url}")
         else:
-            st.warning("Please provide both name and URL.")
-
-    if st.session_state["colab_servers"]:
-        st.write("Registered Servers:")
-        for server in st.session_state["colab_servers"]:
-            st.write(f"- {server['name']}: {server['url']}")
+            st.error("⚠️ Please enter a valid Colab URL")
