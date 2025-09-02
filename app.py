@@ -7,11 +7,6 @@ from datetime import datetime
 import logging
 from typing import Optional, Dict, List, Tuple
 
-import streamlit as st
-
-st.write("All secret keys:", list(st.secrets.keys()))
-st.write("GitHub secret block:", st.secrets.get("github"))
-
 # ログ設定
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
