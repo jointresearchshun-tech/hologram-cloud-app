@@ -21,7 +21,6 @@ def file_management_ui():
     st.divider()
 
     # List & Download & Delete
-    st.markdown("### Repository Files (DATA folder only)")
     files = github_client.list_files("data")
 
     if files:
