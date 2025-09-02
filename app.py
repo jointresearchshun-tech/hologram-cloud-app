@@ -1,5 +1,6 @@
 import streamlit as st
 from ui.github_ui import github_connect_ui
+from ui.processing_ui import processing_ui
 
 
 from practical_colab_solution.integrated_colab_ui import colab_connect_ui  
@@ -17,6 +18,8 @@ def main():
 
     # File management UI
     file_management_ui()
+
+    processing_ui()
 
 
 if __name__ == "__main__":
