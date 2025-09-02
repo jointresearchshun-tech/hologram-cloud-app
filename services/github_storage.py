@@ -50,3 +50,16 @@ class GithubStorage:
         except Exception as e:
             self.logger.error(f"Failed to delete {file_path}: {e}")
             raise
+
+
+def connect_github(token: str, repo_name: str):
+    """
+    Simple connection test to GitHub repository.
+    Returns (success: bool, message: str)
+    """
+    try:
+        storage = GithubStorage(token, repo_name)
+        storage.list_files("")  # connection test
+        return True, f"Connected to {repo_name}"
+    except Exception as e:
+        return False, str(e)
