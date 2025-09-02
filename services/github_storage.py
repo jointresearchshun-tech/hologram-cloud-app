@@ -1,4 +1,5 @@
 from github import Github
+import base64
 import logging
 
 
@@ -11,26 +12,25 @@ class GithubStorage:
     def upload_file(self, file_path: str, content: bytes, branch: str = "main"):
         """
         GitHub にファイルをアップロード（既存なら更新）。
-        ※ GitHub API が内部で Base64 変換するので、こちらではそのまま渡す。
+        API に渡すときは Base64 エンコードが必須。
         """
+        encoded = base64.b64encode(content).decode("utf-8")
+
         try:
-            # Check if file exists
             contents = self.repo.get_contents(file_path, ref=branch)
             self.repo.update_file(
                 path=file_path,
                 message=f"Update {file_path}",
-                content=content,   # ← Base64 変換しない
+                content=encoded,
                 sha=contents.sha,
                 branch=branch,
             )
             self.logger.info(f"Updated file: {file_path}")
-
         except Exception:
-            # File does not exist, create new
             self.repo.create_file(
                 path=file_path,
                 message=f"Upload {file_path}",
-                content=content,   # ← Base64 変換しない
+                content=encoded,
                 branch=branch,
             )
             self.logger.info(f"Created file: {file_path}")
@@ -46,11 +46,11 @@ class GithubStorage:
     def download_file(self, file_path: str, branch: str = "main") -> bytes:
         """
         GitHub からファイルをダウンロード。
-        API が Base64 デコード済みの content を返すので、そのままバイナリ化。
+        encoding が base64 なので decoded_content でOK。
         """
         try:
             file_content = self.repo.get_contents(file_path, ref=branch)
-            return file_content.decoded_content  # ← APIが自動でデコードしてくれる
+            return file_content.decoded_content
         except Exception as e:
             self.logger.error(f"Failed to download {file_path}: {e}")
             raise
