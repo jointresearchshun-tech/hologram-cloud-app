@@ -10,16 +10,24 @@ class GithubStorage:
 
     def upload_file(self, file_path: str, content: bytes, branch: str = "main"):
         try:
+            # Check if file exists (update instead of create)
+            contents = self.repo.get_contents(file_path, ref=branch)
+            self.repo.update_file(
+                path=file_path,
+                message=f"Update {file_path}",
+                content=content.decode("utf-8", errors="ignore"),
+                sha=contents.sha,
+                branch=branch
+            )
+        except Exception:
+            # Create new file
             self.repo.create_file(
                 path=file_path,
                 message=f"Upload {file_path}",
                 content=content.decode("utf-8", errors="ignore"),
                 branch=branch
             )
-            self.logger.info(f"Uploaded file: {file_path}")
-        except Exception as e:
-            self.logger.error(f"Failed to upload {file_path}: {e}")
-            raise
+        self.logger.info(f"Uploaded file: {file_path}")
 
     def list_files(self, path: str = "", branch: str = "main"):
         try:
@@ -50,16 +58,3 @@ class GithubStorage:
         except Exception as e:
             self.logger.error(f"Failed to delete {file_path}: {e}")
             raise
-
-
-def connect_github(token: str, repo_name: str):
-    """
-    Simple connection test to GitHub repository.
-    Returns (success: bool, message: str)
-    """
-    try:
-        storage = GithubStorage(token, repo_name)
-        storage.list_files("")  # connection test
-        return True, f"Connected to {repo_name}"
-    except Exception as e:
-        return False, str(e)
