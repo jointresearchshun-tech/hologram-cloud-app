@@ -1,5 +1,6 @@
 import streamlit as st
 from services.model_service import load_model_from_pth, decompress_file
+import traceback
 
 def processing_ui():
     st.subheader("🛠 File Processing")
@@ -39,3 +40,4 @@ def processing_ui():
 
         except Exception as e:
             st.error(f"Decompression failed: {e}")
+            st.text(traceback.format_exc())
