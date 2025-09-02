@@ -7,6 +7,11 @@ from datetime import datetime
 import logging
 from typing import Optional, Dict, List, Tuple
 
+import streamlit as st
+
+st.write("All secret keys:", list(st.secrets.keys()))
+st.write("GitHub secret block:", st.secrets.get("github"))
+
 # ログ設定
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -328,10 +333,6 @@ def setup_github_connection():
                     st.info("トークンの権限やリポジトリ名を確認してください")
             else:
                 st.info("💡 Secrets に GitHub 設定が見つかりません")
-    import streamlit as st
-
-    st.write("All secret keys:", list(st.secrets.keys()))
-    st.write("GitHub secret block:", st.secrets.get("github"))
                 
     except Exception as e:
         st.warning(f"⚠️ Secrets 読み込みエラー: {str(e)}")
