@@ -9,13 +9,13 @@ def processing_ui():
         st.warning("⚠️ Please connect to GitHub first.")
         return
 
-    # List files in DATA/
-    files = github_client.list_files("DATA")
+    # List files in data/
+    files = github_client.list_files("data")
     model_files = [f for f in files if f.endswith(".pth")]
     compressed_files = [f for f in files if f.endswith(".pt")]
 
     if not model_files or not compressed_files:
-        st.info("Upload .pth model and .pt compressed data into DATA/ first.")
+        st.info("Upload .pth model and .pt compressed data into data/ first.")
         return
 
     model_file = st.selectbox("Select Model (.pth)", model_files)
@@ -32,7 +32,7 @@ def processing_ui():
 
             # Decompress
             output_name = compressed_file.replace(".pt", "_decompressed.pt")
-            output_path = f"DATA/{output_name}"
+            output_path = f"data/{output_name}"
             saved_path = decompress_file(model, compressed_bytes, output_path, github_client)
 
             st.success(f"✅ Decompressed and saved as {saved_path}")
