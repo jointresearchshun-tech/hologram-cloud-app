@@ -1,3 +1,6 @@
+import streamlit as st
+from services.github_service import connect_github
+
 def github_connect_ui(auto_connect=False):
     st.subheader("🔗 GitHub Connection")
 
@@ -5,7 +8,6 @@ def github_connect_ui(auto_connect=False):
     repo = st.secrets["github"]["repo"]
 
     if auto_connect:
-        from services.github_service import connect_github
         success, msg = connect_github(token, repo)
         if success:
             st.success("✅ Connected to GitHub automatically!")
@@ -13,9 +15,8 @@ def github_connect_ui(auto_connect=False):
             st.error(f"❌ GitHub connection failed: {msg}")
         return
 
-    # 通常のボタン操作版
+    # Manual connection with button
     if st.button("Connect to GitHub"):
-        from services.github_service import connect_github
         success, msg = connect_github(token, repo)
         if success:
             st.success("✅ Connected to GitHub!")
