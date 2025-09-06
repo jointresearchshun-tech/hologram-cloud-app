@@ -25,125 +25,151 @@ class GitHubStorage:
     def test_connection(self) -> bool:
         """GitHub接続テスト"""
         try:
-            self.repository.get_contents("README.md")
-            return True
+            # 軽量なテスト - リポジトリ情報を取得
+            response = requests.get(self.base_url, headers=self.headers, timeout=10)
+            return response.status_code == 200
         except Exception as e:
             logger.error(f"GitHub connection test failed: {e}")
             return False
     
     def list_files(self, folder: str = "data", extensions: Optional[List[str]] = None) -> List[Dict]:
-        """指定フォルダ内のファイル一覧を取得"""
+        """
+        指定フォルダ内のファイル一覧を取得 - API直接アクセスで安全に実装
+        """
         try:
-            contents = self.repository.get_contents(folder)
-            files = []
+            # GitHub API を直接使用してファイル一覧を取得
+            url = f"{self.base_url}/contents/{folder}"
+            response = requests.get(url, headers=self.headers, timeout=30)
             
+            if response.status_code == 404:
+                logger.warning(f"Folder '{folder}' not found")
+                return []
+            elif response.status_code != 200:
+                logger.error(f"Failed to list files: {response.status_code}")
+                return []
+            
+            contents = response.json()
+            if not isinstance(contents, list):
+                return []
+            
+            files = []
             for content in contents:
-                if content.type == "file":
-                    # 拡張子フィルタリング
-                    if extensions:
-                        if not any(content.name.lower().endswith(ext.lower()) for ext in extensions):
-                            continue
-                    
-                    files.append({
-                        "name": content.name,
-                        "size": content.size,
-                        "download_url": content.download_url,
-                        "sha": content.sha,
-                        "path": content.path,
-                        "encoding": getattr(content, 'encoding', None)  # エンコーディング情報も取得
-                    })
+                # ファイルのみ処理（ディレクトリを除外）
+                if content.get("type") != "file":
+                    continue
+                
+                # 拡張子フィルタリング
+                if extensions:
+                    if not any(content["name"].lower().endswith(ext.lower()) for ext in extensions):
+                        continue
+                
+                # 安全にファイル情報を構築
+                file_info = {
+                    "name": content.get("name", ""),
+                    "size": content.get("size", 0),
+                    "download_url": content.get("download_url", ""),
+                    "sha": content.get("sha", ""),
+                    "path": content.get("path", ""),
+                    "type": content.get("type", "file"),
+                    "encoding": content.get("encoding", "unknown"),  # APIから直接取得
+                    "url": content.get("url", "")  # Content API URL
+                }
+                
+                files.append(file_info)
+                logger.info(f"Found file: {file_info['name']} ({file_info['size']} bytes, encoding: {file_info['encoding']})")
             
             return files
             
         except Exception as e:
             logger.error(f"Error listing files: {e}")
+            st.error(f"ファイル一覧取得エラー: {e}")
             return []
     
     def download_file(self, file_info: Dict) -> Optional[bytes]:
         """
-        ファイルをダウンロード - エンコーディングの問題に対応
+        ファイルをダウンロード - 段階的フォールバック方式
         """
-        try:
-            # Method 1: download_url を使用（推奨）
-            if "download_url" in file_info and file_info["download_url"]:
-                logger.info(f"Downloading via download_url: {file_info['name']}")
-                response = requests.get(file_info["download_url"], timeout=60)
+        file_name = file_info.get("name", "unknown")
+        file_size = file_info.get("size", 0)
+        encoding = file_info.get("encoding", "unknown")
+        
+        logger.info(f"Starting download: {file_name} (size: {file_size}, encoding: {encoding})")
+        
+        # Method 1: download_url を使用（最も確実で高速）
+        if file_info.get("download_url"):
+            logger.info(f"Method 1: Using download_url for {file_name}")
+            try:
+                response = requests.get(
+                    file_info["download_url"], 
+                    timeout=300,  # 5分タイムアウト
+                    stream=True if file_size > 1024*1024 else False  # 1MB以上はストリーミング
+                )
+                
+                if response.status_code == 200:
+                    if file_size > 1024*1024:  # 大きなファイルの場合
+                        content = b""
+                        for chunk in response.iter_content(chunk_size=8192):
+                            if chunk:
+                                content += chunk
+                        return content
+                    else:
+                        return response.content
+                else:
+                    logger.warning(f"download_url failed with status {response.status_code}")
+                    
+            except Exception as e:
+                logger.error(f"Method 1 failed for {file_name}: {e}")
+        
+        # Method 2: GitHub Contents API を使用
+        if file_info.get("url"):
+            logger.info(f"Method 2: Using Contents API for {file_name}")
+            try:
+                response = requests.get(file_info["url"], headers=self.headers, timeout=60)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    
+                    # base64 エンコーディングの場合
+                    if data.get("encoding") == "base64" and data.get("content"):
+                        try:
+                            # 改行を除去してからデコード
+                            content_clean = data["content"].replace("\n", "").replace("\r", "")
+                            return base64.b64decode(content_clean)
+                        except Exception as e:
+                            logger.error(f"Base64 decode failed: {e}")
+                    
+                    # download_url が提供されている場合（大きなファイル）
+                    elif data.get("download_url"):
+                        logger.info(f"Using download_url from Contents API response")
+                        download_response = requests.get(data["download_url"], timeout=300)
+                        if download_response.status_code == 200:
+                            return download_response.content
+                    
+                else:
+                    logger.warning(f"Contents API failed with status {response.status_code}")
+                    
+            except Exception as e:
+                logger.error(f"Method 2 failed for {file_name}: {e}")
+        
+        # Method 3: ファイルパスから直接構築したdownload URLを使用
+        if file_info.get("path"):
+            logger.info(f"Method 3: Using constructed raw URL for {file_name}")
+            try:
+                # GitHub の raw content URL を構築
+                raw_url = f"https://raw.githubusercontent.com/{self.repo}/main/{file_info['path']}"
+                response = requests.get(raw_url, timeout=300)
+                
                 if response.status_code == 200:
                     return response.content
                 else:
-                    logger.warning(f"Download via download_url failed: {response.status_code}")
-            
-            # Method 2: GitHub API Content endpoint を使用
-            if "path" in file_info:
-                logger.info(f"Downloading via GitHub API: {file_info['name']}")
-                return self._download_via_api(file_info["path"])
-            
-            # Method 3: PyGithub を使用（小さなファイル用）
-            if file_info.get("size", 0) < 1024 * 1024:  # 1MB未満
-                logger.info(f"Downloading via PyGithub: {file_info['name']}")
-                return self._download_via_pygithub(file_info)
-            
-            logger.error(f"All download methods failed for: {file_info['name']}")
-            return None
-            
-        except Exception as e:
-            logger.error(f"Download error for {file_info.get('name', 'unknown')}: {e}")
-            return None
-    
-    def _download_via_api(self, file_path: str) -> Optional[bytes]:
-        """GitHub API を直接使用してダウンロード"""
-        try:
-            url = f"{self.base_url}/contents/{file_path}"
-            response = requests.get(url, headers=self.headers, timeout=60)
-            
-            if response.status_code == 200:
-                data = response.json()
-                
-                # エンコーディングをチェック
-                if data.get("encoding") == "base64":
-                    return base64.b64decode(data["content"])
-                elif "download_url" in data:
-                    # 大きなファイルの場合、download_urlが提供される
-                    download_response = requests.get(data["download_url"], timeout=60)
-                    if download_response.status_code == 200:
-                        return download_response.content
-                else:
-                    logger.error(f"Unsupported encoding: {data.get('encoding')}")
-                    return None
-            else:
-                logger.error(f"API download failed: {response.status_code}")
-                return None
-                
-        except Exception as e:
-            logger.error(f"API download error: {e}")
-            return None
-    
-    def _download_via_pygithub(self, file_info: Dict) -> Optional[bytes]:
-        """PyGithub を使用してダウンロード（小さなファイル用）"""
-        try:
-            file_path = file_info.get("path", file_info.get("name"))
-            content_file = self.repository.get_contents(file_path)
-            
-            if hasattr(content_file, 'decoded_content'):
-                # エンコーディングが適切な場合
-                if content_file.encoding in ["base64", None]:
-                    if content_file.encoding == "base64":
-                        return content_file.decoded_content
-                    else:
-                        # encoding が None の場合は直接ダウンロード
-                        if content_file.download_url:
-                            response = requests.get(content_file.download_url, timeout=60)
-                            return response.content if response.status_code == 200 else None
-                else:
-                    logger.error(f"Unsupported encoding: {content_file.encoding}")
-                    return None
-            else:
-                logger.error("No decoded_content available")
-                return None
-                
-        except Exception as e:
-            logger.error(f"PyGithub download error: {e}")
-            return None
+                    logger.warning(f"Raw URL failed with status {response.status_code}")
+                    
+            except Exception as e:
+                logger.error(f"Method 3 failed for {file_name}: {e}")
+        
+        # すべての方法が失敗
+        logger.error(f"All download methods failed for {file_name}")
+        return None
     
     def upload_file(self, content: bytes, filename: str, folder: str = "results", 
                    message: Optional[str] = None) -> bool:
@@ -151,51 +177,63 @@ class GitHubStorage:
         try:
             file_path = f"{folder}/{filename}"
             
+            # Base64エンコード
+            if isinstance(content, bytes):
+                content_b64 = base64.b64encode(content).decode('utf-8')
+            else:
+                content_b64 = base64.b64encode(content.encode('utf-8')).decode('utf-8')
+            
             # 既存ファイルの確認
-            try:
-                existing_file = self.repository.get_contents(file_path)
-                sha = existing_file.sha
-                commit_message = message or f"Update {filename} at {datetime.now().isoformat()}"
-            except:
-                sha = None
-                commit_message = message or f"Upload {filename} at {datetime.now().isoformat()}"
+            check_url = f"{self.base_url}/contents/{file_path}"
+            check_response = requests.get(check_url, headers=self.headers, timeout=10)
+            
+            data = {
+                "message": message or f"Upload {filename} at {datetime.now().isoformat()}",
+                "content": content_b64
+            }
+            
+            if check_response.status_code == 200:
+                # ファイルが存在する場合、SHAが必要
+                existing_data = check_response.json()
+                data["sha"] = existing_data["sha"]
+                data["message"] = message or f"Update {filename} at {datetime.now().isoformat()}"
             
             # アップロード実行
-            if sha:
-                # 更新
-                self.repository.update_file(
-                    path=file_path,
-                    message=commit_message,
-                    content=content,
-                    sha=sha
-                )
+            response = requests.put(check_url, json=data, headers=self.headers, timeout=60)
+            
+            if response.status_code in [200, 201]:
+                logger.info(f"File uploaded successfully: {file_path}")
+                return True
             else:
-                # 新規作成
-                self.repository.create_file(
-                    path=file_path,
-                    message=commit_message,
-                    content=content
-                )
-            
-            logger.info(f"File uploaded successfully: {file_path}")
-            return True
-            
+                logger.error(f"Upload failed: {response.status_code} - {response.text}")
+                return False
+                
         except Exception as e:
             logger.error(f"Upload error: {e}")
             return False
     
-    def get_file_info(self, file_path: str) -> Optional[Dict]:
-        """ファイル情報を取得"""
+    def get_file_info_detailed(self, file_path: str) -> Optional[Dict]:
+        """ファイルの詳細情報を安全に取得"""
         try:
-            content = self.repository.get_contents(file_path)
-            return {
-                "name": content.name,
-                "size": content.size,
-                "download_url": content.download_url,
-                "sha": content.sha,
-                "path": content.path,
-                "encoding": getattr(content, 'encoding', None)
-            }
+            url = f"{self.base_url}/contents/{file_path}"
+            response = requests.get(url, headers=self.headers, timeout=30)
+            
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    "name": data.get("name", ""),
+                    "size": data.get("size", 0),
+                    "download_url": data.get("download_url", ""),
+                    "sha": data.get("sha", ""),
+                    "path": data.get("path", ""),
+                    "encoding": data.get("encoding", "unknown"),
+                    "type": data.get("type", "file"),
+                    "url": data.get("url", "")
+                }
+            else:
+                logger.error(f"Failed to get file info: {response.status_code}")
+                return None
+                
         except Exception as e:
             logger.error(f"Error getting file info: {e}")
             return None
